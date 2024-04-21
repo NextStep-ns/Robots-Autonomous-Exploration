@@ -164,39 +164,7 @@ class Agent(Node):
         self.map[int(PosAgent[0]*2+20), int(PosAgent[1]*2+20)] = FREE_SPACE_VALUE
 
         """ Fill the free cases spoted """
-    
-        #Front
-        if self.front_dist > 3:
-            
-            for i in range(1, 6):
-                ObjectFREE_Front = np.dot(np.array([[0,-1],[1,0]]),np.array([[((3-i/2+self.robot_size/2)/self.map_msg.info.resolution)*np.cos(self.yaw)+self.x/self.map_msg.info.resolution],
-                                [((3-i/2+self.robot_size/2)/self.map_msg.info.resolution)*np.sin(self.yaw)+self.y/self.map_msg.info.resolution]
-                                ]))
-                if ObjectFREE_Front[0] <=19 and ObjectFREE_Front[1] > -20:
-                    self.map[int(ObjectFREE_Front[0]+20), int(ObjectFREE_Front[1]+20)] = FREE_SPACE_VALUE
 
-        #Left
-        if self.left_dist > 3:
-            
-            for i in range(1, 6):
-                ObjectFREE_Left = np.dot(np.array([[0,-1],[1,0]]),np.array([[-((3-i/2+self.robot_size/2)/self.map_msg.info.resolution)*np.sin(self.yaw)+self.x/self.map_msg.info.resolution],
-                                [((3-i/2+self.robot_size/2)/self.map_msg.info.resolution)*np.cos(self.yaw)+self.y/self.map_msg.info.resolution]
-                                ]))
-                if ObjectFREE_Left[0] <=19 and ObjectFREE_Left[1] > -20:
-                    self.map[int(ObjectFREE_Left[0]+20), int(ObjectFREE_Left[1]+20)] = FREE_SPACE_VALUE
-
-        #Right
-        if self.right_dist > 3:
-            
-            for i in range(1,6):
-                ObjectFREE_Right = np.dot(np.array([[0,-1],[1,0]]),np.array([[-((3-i/2-self.robot_size/2)/self.map_msg.info.resolution)*np.sin(self.yaw)+self.x/self.map_msg.info.resolution],
-                                [((3-i/2-self.robot_size/2)/self.map_msg.info.resolution)*np.cos(self.yaw)+self.y/self.map_msg.info.resolution]
-                                ]))
-                
-                if ObjectFREE_Right[0] <=19 and ObjectFREE_Right[1] > -20 and ObjectFREE_Right[1] <=19 and ObjectFREE_Right[0] > -20:
-                    self.map[int(ObjectFREE_Right[0]+20), int(ObjectFREE_Right[1]+20)] = FREE_SPACE_VALUE
-
-    
         if self.left_dist <= 3:
 
             # Left sensor object position
@@ -244,7 +212,47 @@ class Agent(Node):
                 if self.map[int(ObjectFREE_Front[0]+20), int(ObjectFREE_Front[1]+20)] != OBSTACLE_VALUE:
                     if ObjectFREE_Front[0] <=19 and ObjectFREE_Front[1] > -20:
                         self.map[int(ObjectFREE_Front[0]+20), int(ObjectFREE_Front[1]+20)] = FREE_SPACE_VALUE
+    
+        #Front
+        if self.front_dist > 3:
             
+            for i in range(6, 0, -1):
+                ObjectFREE_Front = np.dot(np.array([[0,-1],[1,0]]),np.array([[((3-i/2+self.robot_size/2)/self.map_msg.info.resolution)*np.cos(self.yaw)+self.x/self.map_msg.info.resolution],
+                                [((3-i/2+self.robot_size/2)/self.map_msg.info.resolution)*np.sin(self.yaw)+self.y/self.map_msg.info.resolution]
+                                ]))
+                
+                if self.map[int(ObjectFREE_Front[0]+20), int(ObjectFREE_Front[1]+20)] != OBSTACLE_VALUE:
+                    if ObjectFREE_Front[0] <=19 and ObjectFREE_Front[1] > -20:
+                        self.map[int(ObjectFREE_Front[0]+20), int(ObjectFREE_Front[1]+20)] = FREE_SPACE_VALUE
+                else:
+                    break
+
+        #Left
+        if self.left_dist > 3:
+            
+            for i in range(6, 0, -1):
+                ObjectFREE_Left = np.dot(np.array([[0,-1],[1,0]]),np.array([[-((3-i/2+self.robot_size/2)/self.map_msg.info.resolution)*np.sin(self.yaw)+self.x/self.map_msg.info.resolution],
+                                [((3-i/2+self.robot_size/2)/self.map_msg.info.resolution)*np.cos(self.yaw)+self.y/self.map_msg.info.resolution]
+                                ]))
+                if self.map[int(ObjectFREE_Left[0]+20), int(ObjectFREE_Left[1]+20)] != OBSTACLE_VALUE:
+                    if ObjectFREE_Left[0] <=19 and ObjectFREE_Left[1] > -20:
+                        self.map[int(ObjectFREE_Left[0]+20), int(ObjectFREE_Left[1]+20)] = FREE_SPACE_VALUE
+                else:
+                    break
+
+        #Right
+        if self.right_dist > 3:
+            
+            for i in range(6, 0, -1):
+                ObjectFREE_Right = np.dot(np.array([[0,-1],[1,0]]),np.array([[-((3-i/2-self.robot_size/2)/self.map_msg.info.resolution)*np.sin(self.yaw)+self.x/self.map_msg.info.resolution],
+                                [((3-i/2-self.robot_size/2)/self.map_msg.info.resolution)*np.cos(self.yaw)+self.y/self.map_msg.info.resolution]
+                                ]))
+                if self.map[int(ObjectFREE_Right[0]+20), int(ObjectFREE_Right[1]+20)] != OBSTACLE_VALUE:
+                    if ObjectFREE_Right[0] <=19 and ObjectFREE_Right[1] > -20 and ObjectFREE_Right[1] <=19 and ObjectFREE_Right[0] > -20:
+                        self.map[int(ObjectFREE_Right[0]+20), int(ObjectFREE_Right[1]+20)] = FREE_SPACE_VALUE
+                else:
+                    break
+                
 
     def us_front_cb(self, msg):
         """ 
