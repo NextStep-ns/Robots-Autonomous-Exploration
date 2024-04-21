@@ -593,15 +593,15 @@ class Agent(Node):
             path = self.best_path[1]
         if int(self.ns[-1]) == 3:
             path = self.best_path[2]
-        self.get_logger().info(f"path {path}")
+        self.get_logger().info(f"path {self.best_path}")
 
         # Check if there are any cells left in the path
-        if len(path) < 3:
-            self.working=False
-            self.turned=False
+        if path is None or len(path) < 2:
+            self.working = False
+            self.turned = False
             self.turning = False
             self.find_best_centroid()
-            return  # No more cells to navigate to
+            return
 
         point = path[1]
         # Convert path points to the real world coordinates
@@ -616,7 +616,7 @@ class Agent(Node):
         distance_to_next = np.sqrt(delta_x ** 2 + delta_y ** 2)
 
         # Adjust angle if needed to face the next cell directly
-        self.angle_difference = angle_to_target - (self.yaw + np.pi/2)
+        self.angle_difference = angle_to_target - self.yaw
         if self.angle_difference > np.pi:
             self.angle_difference -= 2 * np.pi
         elif self.angle_difference < -np.pi:
@@ -631,7 +631,7 @@ class Agent(Node):
             self.angle_difference = 0.5
         
         # Wait until the robot reaches the next cell
-        if distance_to_next > 1 and self.alignment:  
+        if distance_to_next > 0.5 and self.alignment:  
             
             self.get_logger().info(f"distance to next : {distance_to_next} ")
             delta_x = x_target - self.x
@@ -641,7 +641,7 @@ class Agent(Node):
             self.move_fwd()
 
         # Remove the first cell if the robot is close enough to it
-        if distance_to_next <= 0.55 and self.moving:
+        if distance_to_next <= 0.5 and self.moving:
             
             self.alignment = False
             self.moving = False
