@@ -1,6 +1,6 @@
-__author__ = "Johvany Gustave, Jonatan Alvarez"
+__author__ = "Douillard-Jacq Grégoire, Leray Hugo, Osika Axel"
 __copyright__ = "Copyright 2024, IN424, IPSA 2024"
-__credits__ = ["Johvany Gustave", "Jonatan Alvarez"]
+__credits__ = ["Douillard-Jacq Grégoire", "Leray Hugo", "Osika Axel"]
 __license__ = "Apache License 2.0"
 __version__ = "1.0.0"
 
@@ -40,6 +40,7 @@ class Agent(Node):
         self.alignment=False
         self.moving=False
         self.working=False
+        self.start_rotation=False
 
         self.map_agent_pub = self.create_publisher(OccupancyGrid, f"/{self.ns}/map", 1) #publisher for agent's own map
         self.init_map()
@@ -60,13 +61,12 @@ class Agent(Node):
         self.cmd_vel_pub = self.create_publisher(Twist, f"{self.ns}/cmd_vel", 1)    #publisher to send velocity commands to the robot
 
         #Create timers to autonomously call the following methods periodically
-        self.mapmanager_called = False
         self.mapmanager_timer = self.create_timer(0.2, self.map_update) #0.1s of period <=> 10 Hz
 
         self.create_timer(1, self.publish_maps) #1Hz
 
         self.strategy_called = False
-        self.strategy_timer = self.create_timer(2, self.strategy)
+        self.strategy_timer = self.create_timer(0.4, self.strategy)
     
 
     def load_params(self):
@@ -161,12 +161,12 @@ class Agent(Node):
     def map_update(self):
         """ Consider sensor readings to update the agent's map """
         PosAgent = np.dot(np.array([[0,-1],[1,0]]),np.array([self.x,self.y]))
-
+        self.map[int(PosAgent[0]*2+20), int(PosAgent[1]*2+20)] = FREE_SPACE_VALUE
 
         """ Fill the free cases spoted """
     
         #Front
-        if self.front_dist > 5:
+        if self.front_dist > 3:
             
             for i in range(1, 6):
                 ObjectFREE_Front = np.dot(np.array([[0,-1],[1,0]]),np.array([[((3-i/2+self.robot_size/2)/self.map_msg.info.resolution)*np.cos(self.yaw)+self.x/self.map_msg.info.resolution],
@@ -174,10 +174,9 @@ class Agent(Node):
                                 ]))
                 if ObjectFREE_Front[0] <=19 and ObjectFREE_Front[1] > -20:
                     self.map[int(ObjectFREE_Front[0]+20), int(ObjectFREE_Front[1]+20)] = FREE_SPACE_VALUE
-            self.map[int(PosAgent[0]*2+20), int(PosAgent[1]*2+20)] = FREE_SPACE_VALUE
 
         #Left
-        if self.left_dist > 5:
+        if self.left_dist > 3:
             
             for i in range(1, 6):
                 ObjectFREE_Left = np.dot(np.array([[0,-1],[1,0]]),np.array([[-((3-i/2+self.robot_size/2)/self.map_msg.info.resolution)*np.sin(self.yaw)+self.x/self.map_msg.info.resolution],
@@ -185,41 +184,28 @@ class Agent(Node):
                                 ]))
                 if ObjectFREE_Left[0] <=19 and ObjectFREE_Left[1] > -20:
                     self.map[int(ObjectFREE_Left[0]+20), int(ObjectFREE_Left[1]+20)] = FREE_SPACE_VALUE
-            self.map[int(PosAgent[0]*2+20), int(PosAgent[1]*2+20)] = FREE_SPACE_VALUE
 
         #Right
-        if self.right_dist > 5:
+        if self.right_dist > 3:
             
             for i in range(1,6):
                 ObjectFREE_Right = np.dot(np.array([[0,-1],[1,0]]),np.array([[-((3-i/2-self.robot_size/2)/self.map_msg.info.resolution)*np.sin(self.yaw)+self.x/self.map_msg.info.resolution],
                                 [((3-i/2-self.robot_size/2)/self.map_msg.info.resolution)*np.cos(self.yaw)+self.y/self.map_msg.info.resolution]
                                 ]))
+                
                 if ObjectFREE_Right[0] <=19 and ObjectFREE_Right[1] > -20 and ObjectFREE_Right[1] <=19 and ObjectFREE_Right[0] > -20:
                     self.map[int(ObjectFREE_Right[0]+20), int(ObjectFREE_Right[1]+20)] = FREE_SPACE_VALUE
-            self.map[int(PosAgent[0]*2+20), int(PosAgent[1]*2+20)] = FREE_SPACE_VALUE
 
-        # Front sensor object position
-        ObjectPos_Front = np.dot(np.array([[0,-1],[1,0]]),np.array([[((self.front_dist+self.robot_size/2)/self.map_msg.info.resolution)*np.cos(self.yaw)+self.x/self.map_msg.info.resolution],
-                                [((self.front_dist+self.robot_size/2)/self.map_msg.info.resolution)*np.sin(self.yaw)+self.y/self.map_msg.info.resolution]
-                                ]))
-        
-        # Left sensor object position
-        ObjectPos_Left = np.dot(np.array([[0,-1],[1,0]]),np.array([[-((self.left_dist+self.robot_size/2)/self.map_msg.info.resolution)*np.sin(self.yaw)+self.x/self.map_msg.info.resolution],
-                        [((self.left_dist+self.robot_size/2)/self.map_msg.info.resolution)*np.cos(self.yaw)+self.y/self.map_msg.info.resolution]
-                        ]))
-
-
-        # Right sensor object position
-        ObjectPos_Right = np.dot(np.array([[0,-1],[1,0]]),np.array([[-((-self.right_dist-self.robot_size/2)/self.map_msg.info.resolution)*np.sin(self.yaw)+self.x/self.map_msg.info.resolution],
-                        [((-self.right_dist-self.robot_size/2)/self.map_msg.info.resolution)*np.cos(self.yaw)+self.y/self.map_msg.info.resolution]
-                        ]))
     
         if self.left_dist <= 3:
 
-            self.map[int(PosAgent[0]*2+20), int(PosAgent[1]*2+20)] = FREE_SPACE_VALUE
+            # Left sensor object position
+            ObjectPos_Left = np.dot(np.array([[0,-1],[1,0]]),np.array([[-((self.left_dist+self.robot_size/2)/self.map_msg.info.resolution)*np.sin(self.yaw)+self.x/self.map_msg.info.resolution],
+                            [((self.left_dist+self.robot_size/2)/self.map_msg.info.resolution)*np.cos(self.yaw)+self.y/self.map_msg.info.resolution]
+                            ]))
             self.map[int(ObjectPos_Left[0]+20), int(ObjectPos_Left[1]+20)] = OBSTACLE_VALUE #all the cells are unexplored initially
 
-            for i in range(1, int(self.left_dist*2)):
+            for i in range(1, math.ceil(self.left_dist*2)):
                 ObjectFREE_Left = np.dot(np.array([[0,-1],[1,0]]),np.array([[-((self.left_dist-i/2+self.robot_size/2)/self.map_msg.info.resolution)*np.sin(self.yaw)+self.x/self.map_msg.info.resolution],
                                 [((self.left_dist-i/2+self.robot_size/2)/self.map_msg.info.resolution)*np.cos(self.yaw)+self.y/self.map_msg.info.resolution]
                                 ]))
@@ -228,11 +214,14 @@ class Agent(Node):
                         self.map[int(ObjectFREE_Left[0]+20), int(ObjectFREE_Left[1]+20)] = FREE_SPACE_VALUE
 
         if self.right_dist <= 3:
-
-            self.map[int(PosAgent[0]*2+20), int(PosAgent[1]*2+20)] = FREE_SPACE_VALUE
+            
+            # Right sensor object position
+            ObjectPos_Right = np.dot(np.array([[0,-1],[1,0]]),np.array([[-((-self.right_dist-self.robot_size/2)/self.map_msg.info.resolution)*np.sin(self.yaw)+self.x/self.map_msg.info.resolution],
+                            [((-self.right_dist-self.robot_size/2)/self.map_msg.info.resolution)*np.cos(self.yaw)+self.y/self.map_msg.info.resolution]
+                            ]))
             self.map[int(ObjectPos_Right[0]+20), int(ObjectPos_Right[1]+20)] = OBSTACLE_VALUE #all the cells are unexplored initially
 
-            for i in range(1, int(self.right_dist*2)):
+            for i in range(1, math.ceil(self.right_dist*2)):
                 ObjectFREE_Right = np.dot(np.array([[0,-1],[1,0]]),np.array([[-((self.right_dist-i/2-self.robot_size/2)/self.map_msg.info.resolution)*np.sin(self.yaw)+self.x/self.map_msg.info.resolution],
                                 [((self.right_dist-i/2-self.robot_size/2)/self.map_msg.info.resolution)*np.cos(self.yaw)+self.y/self.map_msg.info.resolution]
                                 ]))
@@ -242,19 +231,19 @@ class Agent(Node):
 
         if self.front_dist <= 3:
 
-            self.map[int(PosAgent[0]*2+20), int(PosAgent[1]*2+20)] = FREE_SPACE_VALUE
+            # Front sensor object position
+            ObjectPos_Front = np.dot(np.array([[0,-1],[1,0]]),np.array([[((self.front_dist+self.robot_size/2)/self.map_msg.info.resolution)*np.cos(self.yaw)+self.x/self.map_msg.info.resolution],
+                                [((self.front_dist+self.robot_size/2)/self.map_msg.info.resolution)*np.sin(self.yaw)+self.y/self.map_msg.info.resolution]
+                                ]))
             self.map[int(ObjectPos_Front[0]+20), int(ObjectPos_Front[1]+20)] = OBSTACLE_VALUE
 
-            for i in range(1, int(self.front_dist*2)):
+            for i in range(1, math.ceil(self.front_dist*2)):
                 ObjectFREE_Front = np.dot(np.array([[0,-1],[1,0]]),np.array([[((self.front_dist-i/2+self.robot_size/2)/self.map_msg.info.resolution)*np.cos(self.yaw)+self.x/self.map_msg.info.resolution],
                                 [((self.front_dist-i/2+self.robot_size/2)/self.map_msg.info.resolution)*np.sin(self.yaw)+self.y/self.map_msg.info.resolution]
                                 ]))
                 if self.map[int(ObjectFREE_Front[0]+20), int(ObjectFREE_Front[1]+20)] != OBSTACLE_VALUE:
                     if ObjectFREE_Front[0] <=19 and ObjectFREE_Front[1] > -20:
                         self.map[int(ObjectFREE_Front[0]+20), int(ObjectFREE_Front[1]+20)] = FREE_SPACE_VALUE
-
-        if self.map[int(PosAgent[0]*2+20), int(PosAgent[1])*2+20] == OBSTACLE_VALUE:
-            self.map[int(PosAgent[0]*2+20), int(PosAgent[1])*2+20] = FREE_SPACE_VALUE
             
 
     def us_front_cb(self, msg):
@@ -338,7 +327,7 @@ class Agent(Node):
         if int(self.ns[-1])==1:
             for i in indices_x:
                 for j in indices_y:
-                    frontier_x1, frontier_y1 = self.is_frontier_point(int(PosAgent[0]*2+20)+i, int(PosAgent[0]*2+20)+j)
+                    frontier_x1, frontier_y1 = self.is_frontier_point(int(PosAgent[0]*2+20)+i, int(PosAgent[1]*2+20)+j)
                     
                     if frontier_x1[0] and frontier_y1[0]:
                         all_frontier_x1.append(frontier_x1[0])
@@ -578,10 +567,6 @@ class Agent(Node):
             
         return best_centroid
 
-        # size len(group) 
-        # distance robot-centroid
-        # orientation robot - centroid
-        # cost = L1distance - L2size + L3orientation
 
     def movetobestcentroid(self):
 
@@ -600,7 +585,7 @@ class Agent(Node):
             self.working = False
             self.turned = False
             self.turning = False
-            self.find_best_centroid()
+            self.start_rotation=True
             return
 
         point = path[1]
@@ -631,7 +616,7 @@ class Agent(Node):
             self.angle_difference = 0.5
         
         # Wait until the robot reaches the next cell
-        if distance_to_next > 0.5 and self.alignment:  
+        if distance_to_next > 0.01 and self.alignment:  
             
             self.get_logger().info(f"distance to next : {distance_to_next} ")
             delta_x = x_target - self.x
@@ -645,7 +630,6 @@ class Agent(Node):
             
             self.alignment = False
             self.moving = False
-            self.get_logger().info(f"{self.moving} ")
             self.stop_movement()
             self.distance_to_next = 50  # Reset the distance
             # Remove the first cell from the path
@@ -674,20 +658,29 @@ class Agent(Node):
             stop_cmd = Twist()  # Commande pour arrêter les mouvements
             self.cmd_vel_pub.publish(stop_cmd)
 
-            self.mapmanager_called = True
-            if self.mapmanager_called:
-                self.mapmanager_timer.cancel()
+            self.mapmanager_timer.cancel()
             
-            if not self.working:
-                    
-                    self.get_logger().info(f"here")
-                    self.find_best_centroid()
+            if not self.working:  
+                self.get_logger().info(f"here")
+                self.find_best_centroid()
 
             self.movetobestcentroid()
 
-            """self.strategy_called = True
-            if self.strategy_called:
-                self.strategy_timer.cancel()"""
+            # Le robot va refaire un 360 une fois arrivé au best centroid
+            if self.start_rotation:
+                del self.rotation_start_time
+                self.start_rotation=False
+
+                # Retirer toutes les cases qui sont coloriées en jaune, orange et rouge
+                # self.reinitialiser_couleurs()
+                self.mapmanager_timer = self.create_timer(0.2, self.map_update)
+
+    def reinitialiser_couleurs(self):
+        for i in range(0, 39):
+            for j in range(0, 39):
+                if self.map[i, j] == FRONTIER or self.map[i, j] == CENTROID or self.map[i, j] == BEST_CENTROID:
+                    self.map[i, j] == UNEXPLORED_SPACE_VALUE
+
 
 
     def turn(self):
@@ -721,7 +714,6 @@ def main():
     rclpy.init()
 
     node = Agent()
-    node.strategy()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
