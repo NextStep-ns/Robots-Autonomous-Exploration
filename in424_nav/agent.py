@@ -16,6 +16,7 @@ from tf_transformations import euler_from_quaternion
 import sys
 import numpy as np
 import math
+import time
 from .my_common import *#common variables are stored her 
 
 
@@ -32,6 +33,13 @@ class Agent(Node):
         self.agents_pose = [None]*self.nb_agents    #[(x_1, y_1), (x_2, y_2), (x_3, y_3)] if there are 3 agents
         self.x = self.y = self.yaw = None   #the pose of this specific agent running the node
         self.front_dist = self.left_dist = self.right_dist = 0.0    #range values for each ultrasonic sensor
+
+        # Flags
+        self.turning=False
+        self.turned=False
+        self.alignment=False
+        self.moving=False
+        self.working=False
 
         self.map_agent_pub = self.create_publisher(OccupancyGrid, f"/{self.ns}/map", 1) #publisher for agent's own map
         self.init_map()
@@ -52,9 +60,13 @@ class Agent(Node):
         self.cmd_vel_pub = self.create_publisher(Twist, f"{self.ns}/cmd_vel", 1)    #publisher to send velocity commands to the robot
 
         #Create timers to autonomously call the following methods periodically
-        self.create_timer(0.2, self.map_update) #0.1s of period <=> 10 Hz
-        self.create_timer(0.5, self.strategy)      #0.5s of period <=> 2 Hz
+        self.mapmanager_called = False
+        self.mapmanager_timer = self.create_timer(0.2, self.map_update) #0.1s of period <=> 10 Hz
+
         self.create_timer(1, self.publish_maps) #1Hz
+
+        self.strategy_called = False
+        self.strategy_timer = self.create_timer(2, self.strategy)
     
 
     def load_params(self):
@@ -283,40 +295,86 @@ class Agent(Node):
 
     # Define function to check if a point is a frontier point
     def is_frontier_point(self, x, y):
-        frontier_x = []
-        frontier_y  = []
+        frontier_x1 = []
+        frontier_x2 = []
+        frontier_x3 = []
+        frontier_y1 = []
+        frontier_y2 = []
+        frontier_y3 = []
+        frontier_y = [frontier_y1,frontier_y2,frontier_y3]
+        frontier_x = [frontier_x1,frontier_x2,frontier_x3]
         indices_x = [-1, 0, 1]
         indices_y = [-1, 0, 1]
+
         if x <=39 and x >=0 and y <=39 and y >= 0:
             if self.map[x, y] == FREE_SPACE_VALUE:
                 for i in indices_x:
                     for j in indices_y:
                         if (x+i) <= 39 and (x+i) >= 0 and (y+j) <= 39 and (y+j) >= 0:
                             if self.map[x+i, y+j] == UNEXPLORED_SPACE_VALUE:
-                                frontier_x.append(x+i)
-                                frontier_y.append(y+j)
-        
+                                if int(self.ns[-1]) == 1:
+                                    frontier_x[0].append(x+i)
+                                    frontier_y[0].append(y+j)
+                                if int(self.ns[-1]) == 2:
+                                    frontier_x[1].append(x+i)
+                                    frontier_y[1].append(y+j)
+                                if int(self.ns[-1]) == 3:
+                                    frontier_x[2].append(x+i)
+                                    frontier_y[2].append(y+j)
         return frontier_x, frontier_y
     
     def explore_environment(self):
         PosAgent = np.dot(np.array([[0,-1],[1,0]]),np.array([self.x,self.y]))
         
-        all_frontier_x = []
-        all_frontier_y = []
-        indices_x = list(range(-15, 15))
-        indices_y = list(range(-15, 15))
-        for i in indices_x:
-            for j in indices_y:
-                frontier_x, frontier_y = self.is_frontier_point(int(PosAgent[0]*2+20)+i, int(PosAgent[0]*2+20)+j)
-                if frontier_x and frontier_y:
-                    all_frontier_x.append(frontier_x)
-                    all_frontier_y.append(frontier_y)
+        all_frontier_x1 = []
+        all_frontier_y1 = []
+        all_frontier_x2 = []
+        all_frontier_y2 = []
+        all_frontier_x3 = []
+        all_frontier_y3 = []
 
-        for k in range(len(all_frontier_x)):
-            for j in range(len(all_frontier_x[k])):
-                self.map[all_frontier_x[k][j], all_frontier_y[k][j]] = FRONTIER
+        indices_x = list(range(-8, 8))
+        indices_y = list(range(-8, 8))
+        if int(self.ns[-1])==1:
+            for i in indices_x:
+                for j in indices_y:
+                    frontier_x1, frontier_y1 = self.is_frontier_point(int(PosAgent[0]*2+20)+i, int(PosAgent[0]*2+20)+j)
+                    
+                    if frontier_x1[0] and frontier_y1[0]:
+                        all_frontier_x1.append(frontier_x1[0])
+                        all_frontier_y1.append(frontier_y1[0])
+
+            for k in range(len(all_frontier_x1)):
+                for j in range(len(all_frontier_x1[k])):
+                    self.map[all_frontier_x1[k][j], all_frontier_y1[k][j]] = FRONTIER
+
+        if int(self.ns[-1]) == 2:
+            for i in indices_x:
+                for j in indices_y:
+                    frontier_x2, frontier_y2 = self.is_frontier_point(int(PosAgent[0]*2+20)+i, int(PosAgent[1]*2+20)+j)
+                    if frontier_x2[1] and frontier_y2[1]:
+                        all_frontier_x2.append(frontier_x2[1])
+                        all_frontier_y2.append(frontier_y2[1])
+
+            for k in range(len(all_frontier_x2)):
+                for j in range(len(all_frontier_y2[k])):
+                    
+                    self.map[all_frontier_x2[k][j], all_frontier_y2[k][j]] = FRONTIER
         
-        return all_frontier_x, all_frontier_y
+        if int(self.ns[-1]) == 3:
+            for i in indices_x:
+                for j in indices_y:
+                    frontier_x, frontier_y = self.is_frontier_point(int(PosAgent[0]*2+20)+i, int(PosAgent[1]*2+20)+j)
+                    if frontier_x[2] and frontier_y[2]:
+                        all_frontier_x3.append(frontier_x[2])
+                        all_frontier_y3.append(frontier_y[2])
+
+            for k in range(len(all_frontier_x3)):
+                for j in range(len(all_frontier_y3[k])):
+                    self.map[all_frontier_x3[k][j], all_frontier_y3[k][j]] = FRONTIER
+        
+        return all_frontier_x1, all_frontier_y1, all_frontier_x2, all_frontier_y2, all_frontier_x3, all_frontier_y3
+
 
 
     def group_frontier(self, frontier_points):
@@ -334,14 +392,36 @@ class Agent(Node):
            
 
     def frontier_find(self):
-        all_frontier_x, all_frontier_y = self.explore_environment()
+        all_frontier_x1, all_frontier_y1, all_frontier_x2, all_frontier_y2, all_frontier_x3, all_frontier_y3 = self.explore_environment()
+        
+        all_frontier1 = []
+        all_frontier2 = []
+        all_frontier3 = []
+        grouped_frontiers1 = []
+        grouped_frontiers2 = []
+        grouped_frontiers3 = []
+        grouped_frontiers = [grouped_frontiers1, grouped_frontiers2, grouped_frontiers3]
 
-        all_frontier = []
-        for k in range(len(all_frontier_x)):
-            for j in range(len(all_frontier_x[k])):
-                all_frontier.append([all_frontier_x[k][j], all_frontier_y[k][j]])
+        if int(self.ns[-1]) == 1:
+            for k in range(len(all_frontier_x1)):
+                for j in range(len(all_frontier_x1[k])):
+                    all_frontier1.append([all_frontier_x1[k][j], all_frontier_y1[k][j]])
 
-        grouped_frontiers = self.group_frontier(all_frontier)
+            grouped_frontiers[0] = self.group_frontier(all_frontier1)
+        
+        if int(self.ns[-1]) == 2:
+            for k in range(len(all_frontier_x2)):
+                for j in range(len(all_frontier_x2[k])):
+                    all_frontier2.append([all_frontier_x2[k][j], all_frontier_y2[k][j]])
+
+            grouped_frontiers[1] = self.group_frontier(all_frontier2)
+
+        if int(self.ns[-1]) == 3:
+            for k in range(len(all_frontier_x3)):
+                for j in range(len(all_frontier_x3[k])):
+                    all_frontier3.append([all_frontier_x3[k][j], all_frontier_y3[k][j]])
+
+            grouped_frontiers[2] = self.group_frontier(all_frontier3)
 
         return grouped_frontiers
     
@@ -349,22 +429,54 @@ class Agent(Node):
     def centroid(self):
         sum_x = 0
         sum_y = 0
-        centroids = []
-        len_frontiers = []
+        centroids1 = []
+        centroids2 = []
+        centroids3 = []
+        centroids = [centroids1, centroids2, centroids3]
+        len_frontiers1 = []
+        len_frontiers2 = []
+        len_frontiers3 = []
+        len_frontiers = [len_frontiers1, len_frontiers2, len_frontiers3]
         grouped_frontiers = self.frontier_find()
-        #self.get_logger().info(f"len(grouped_frontiers) = : ({len(grouped_frontiers)})")
-        #self.get_logger().info(f"grouped_frontiers = : ({grouped_frontiers})")
-        for k in range(len(grouped_frontiers)):
-            for j in range(len(grouped_frontiers[k])):
-                sum_x += grouped_frontiers[k][j][0]
-                sum_y += grouped_frontiers[k][j][1]
-            len_frontiers.append(len(grouped_frontiers[k]))
-            avg_x = int(sum_x/len(grouped_frontiers[k]))
-            avg_y = int(sum_y/len(grouped_frontiers[k]))
-            centroids.append([avg_x, avg_y])
-            self.map[avg_x, avg_y] = CENTROID
-            sum_x = 0
-            sum_y = 0
+
+        if int(self.ns[-1]) == 1:
+            for k in range(len(grouped_frontiers[0])):
+                for j in range(len(grouped_frontiers[0][k])):
+                    sum_x += grouped_frontiers[0][k][j][0]
+                    sum_y += grouped_frontiers[0][k][j][1]
+                len_frontiers[0].append(len(grouped_frontiers[0][k]))
+                avg_x = int(sum_x/len(grouped_frontiers[0][k]))
+                avg_y = int(sum_y/len(grouped_frontiers[0][k]))
+                centroids[0].append([avg_x, avg_y])
+                self.map[avg_x, avg_y] = CENTROID
+                sum_x = 0
+                sum_y = 0
+    
+        if int(self.ns[-1]) == 2:
+            for k in range(len(grouped_frontiers[1])):
+                for j in range(len(grouped_frontiers[1][k])):
+                    sum_x += grouped_frontiers[1][k][j][0]
+                    sum_y += grouped_frontiers[1][k][j][1]
+                len_frontiers[1].append(len(grouped_frontiers[1][k]))
+                avg_x = int(sum_x/len(grouped_frontiers[1][k]))
+                avg_y = int(sum_y/len(grouped_frontiers[1][k]))
+                centroids[1].append([avg_x, avg_y])
+                self.map[avg_x, avg_y] = CENTROID
+                sum_x = 0
+                sum_y = 0
+
+        if int(self.ns[-1]) == 3:
+            for k in range(len(grouped_frontiers[2])):
+                for j in range(len(grouped_frontiers[2][k])):
+                    sum_x += grouped_frontiers[2][k][j][0]
+                    sum_y += grouped_frontiers[2][k][j][1]
+                len_frontiers[2].append(len(grouped_frontiers[2][k]))
+                avg_x = int(sum_x/len(grouped_frontiers[2][k]))
+                avg_y = int(sum_y/len(grouped_frontiers[2][k]))
+                centroids[2].append([avg_x, avg_y])
+                self.map[avg_x, avg_y] = CENTROID
+                sum_x = 0
+                sum_y = 0
         
         return centroids, len_frontiers
     
@@ -375,72 +487,241 @@ class Agent(Node):
         PosAgent = np.dot(np.array([[0,-1],[1,0]]),np.array([self.x,self.y]))
         centroids, len_frontiers = self.centroid()
         i = 0
-        L1 = 2
-        L2 = 2
+        L1 = 10
+        L2 = 5
         L3 = 2
         path_list = []
         cost_list = []
+        best_centroid1 = []
+        best_centroid2 = []
+        best_centroid3 = []
+        best_centroid = [best_centroid1,best_centroid2,best_centroid3]
+        best_path1 = []
+        best_path2 = []
+        best_path3 = []
+        self.best_path = [best_path1,best_path2,best_path3]
 
-        # Orientation calculations
-        for centroid in centroids:
-            delta_x = centroid[0] - int(PosAgent[0])*2+20
-            delta_y = centroid[1] - int(PosAgent[1])*2+20
+        if int(self.ns[-1]) == 1:
+            # Orientation calculations
+            for centroid in centroids[0]:
+                delta_x = centroid[0] - int(PosAgent[0])*2+20
+                delta_y = centroid[1] - int(PosAgent[1])*2+20
 
-            orientation = math.degrees(math.atan2(delta_y, delta_x))
-        
-            path = a_star_search(self.map, [int(PosAgent[0])*2+20, int(PosAgent[1])*2+20], centroid)
-            path_list.append(path)
-            self.get_logger().info(f"centroid => : ({centroid})")
+                orientation = math.degrees(math.atan2(delta_y, delta_x))
+            
+                path = a_star_search(self.map, [int(PosAgent[0])*2+20, int(PosAgent[1])*2+20], centroid)
+                path_list.append(path)
 
-            if path != None:
-                cost = L1*len(path) - L2*len_frontiers[i] + L3*orientation
-                cost_list.append(cost)
-                self.get_logger().info(f"cost => : ({cost})")
-                self.get_logger().info(f"path => : ({path})")
-            i =+1
-        if cost_list:
-            minimum_cost = min(cost_list)
-            index_of_minimum = cost_list.index(minimum_cost)
-            best_centroid = centroids[index_of_minimum]
-            self.get_logger().info(f"best_centroid => : ({best_centroid})")
+                if path != None:
+                    cost = L1*len(path) - L2*len_frontiers[0][i] + L3*orientation
+                    cost_list.append(cost)
 
-            # COlor in green the best centroid for each agent
-            self.map[best_centroid[0], best_centroid[1]] = BEST_CENTROID
-        
-            return best_centroid
+                i =+1
+            if cost_list:
+                minimum_cost = min(cost_list)
+                index_of_minimum = cost_list.index(minimum_cost)
+                best_centroid[0] = centroids[0][index_of_minimum]
+                self.best_path[0] = path_list[index_of_minimum]
+
+                # COlor in green the best centroid for each agent
+                self.map[best_centroid[0][0], best_centroid[0][1]] = BEST_CENTROID
+
+        if int(self.ns[-1]) == 2:
+            # Orientation calculations
+            for centroid in centroids[1]:
+                delta_x = centroid[0] - int(PosAgent[0])*2+20
+                delta_y = centroid[1] - int(PosAgent[1])*2+20
+
+                orientation = math.degrees(math.atan2(delta_y, delta_x))
+            
+                path = a_star_search(self.map, [int(PosAgent[0])*2+20, int(PosAgent[1])*2+20], centroid)
+                path_list.append(path)
+
+                if path != None:
+                    cost = L1*len(path) - L2*len_frontiers[1][i] + L3*orientation
+                    cost_list.append(cost)
+
+                i =+1
+            if cost_list:
+                minimum_cost = min(cost_list)
+                index_of_minimum = cost_list.index(minimum_cost)
+                best_centroid[1] = centroids[1][index_of_minimum]
+                self.best_path[1] = path_list[index_of_minimum]
+
+                # COlor in green the best centroid for each agent
+                self.map[best_centroid[1][0], best_centroid[1][1]] = BEST_CENTROID
+
+        if int(self.ns[-1]) == 3:
+            # Orientation calculations
+            for centroid in centroids[2]:
+                delta_x = centroid[0] - int(PosAgent[0])*2+20
+                delta_y = centroid[1] - int(PosAgent[1])*2+20
+
+                orientation = math.degrees(math.atan2(delta_y, delta_x))
+            
+                path = a_star_search(self.map, [int(PosAgent[0])*2+20, int(PosAgent[1])*2+20], centroid)
+                path_list.append(path)
+
+                if path != None:
+                    cost = L1*len(path) - L2*len_frontiers[2][i] + L3*orientation
+                    cost_list.append(cost)
+
+                i =+1
+            if cost_list:
+                minimum_cost = min(cost_list)
+                index_of_minimum = cost_list.index(minimum_cost)
+                best_centroid[2] = centroids[2][index_of_minimum]
+                self.best_path[2] = path_list[index_of_minimum]
+
+                # COlor in green the best centroid for each agent
+                self.map[best_centroid[2][0], best_centroid[2][1]] = BEST_CENTROID
+            
+        return best_centroid
 
         # size len(group) 
         # distance robot-centroid
         # orientation robot - centroid
         # cost = L1distance - L2size + L3orientation
 
+    def movetobestcentroid(self):
+
+        self.working = True
+
+        if int(self.ns[-1]) == 1:
+            path = self.best_path[0]
+        if int(self.ns[-1]) == 2:
+            path = self.best_path[1]
+        if int(self.ns[-1]) == 3:
+            path = self.best_path[2]
+        self.get_logger().info(f"path {path}")
+
+        # Check if there are any cells left in the path
+        if len(path) < 3:
+            self.working=False
+            self.turned=False
+            self.turning = False
+            self.find_best_centroid()
+            return  # No more cells to navigate to
+
+        point = path[1]
+        # Convert path points to the real world coordinates
+        x_target = (point[1]-20)/2
+        y_target = (20 -point[0])/2
+        self.get_logger().info(f"x_target, y_target : {x_target}, {y_target}")
+
+        # Calculate the angle to the target
+        delta_x = x_target - self.x
+        delta_y = y_target - self.y
+        angle_to_target = np.arctan2(delta_y, delta_x)
+        distance_to_next = np.sqrt(delta_x ** 2 + delta_y ** 2)
+
+        # Adjust angle if needed to face the next cell directly
+        self.angle_difference = angle_to_target - (self.yaw + np.pi/2)
+        if self.angle_difference > np.pi:
+            self.angle_difference -= 2 * np.pi
+        elif self.angle_difference < -np.pi:
+            self.angle_difference += 2 * np.pi
+        
+        if abs(self.angle_difference) > 0.1 and not self.alignment:
+            self.turn()
+
+        if abs(self.angle_difference) <= 0.1 and not self.moving:
+            self.stop_movement()
+            self.alignment = True
+            self.angle_difference = 0.5
+        
+        # Wait until the robot reaches the next cell
+        if distance_to_next > 1 and self.alignment:  
+            
+            self.get_logger().info(f"distance to next : {distance_to_next} ")
+            delta_x = x_target - self.x
+            delta_y = y_target - self.y
+            distance_to_next = np.sqrt(delta_x ** 2 + delta_y ** 2)
+            self.moving=True
+            self.move_fwd()
+
+        # Remove the first cell if the robot is close enough to it
+        if distance_to_next <= 0.55 and self.moving:
+            
+            self.alignment = False
+            self.moving = False
+            self.get_logger().info(f"{self.moving} ")
+            self.stop_movement()
+            self.distance_to_next = 50  # Reset the distance
+            # Remove the first cell from the path
+            if int(self.ns[-1]) == 1:
+                del self.best_path[0][0]
+            if int(self.ns[-1]) == 2:
+                del self.best_path[1][0]
+            if int(self.ns[-1]) == 3:
+                del self.best_path[2][0]
+
 
     def strategy(self):
         """ Decision and action layers """
 
         if not hasattr(self, 'rotation_start_time'):
-            # Si le temps de début de rotation n'est pas encore défini, définissez-le
             self.rotation_start_time = self.get_clock().now()
-            rotate_cmd = Twist()
-            rotate_cmd.angular.z = 0.4  # Vitesse angulaire pour tourner à 360 degrés
-            self.cmd_vel_pub.publish(rotate_cmd)
 
-        else:
-            # Si le temps de début de rotation est défini, vérifiez si le tour est terminé
-            current_time = self.get_clock().now()
-            elapsed_time = (current_time - self.rotation_start_time).nanoseconds / 1e9  # Temps écoulé en secondes
-            if elapsed_time >= 2 * math.pi/0.4:  # Si le temps écoulé est supérieur ou égal à 2 * pi (environ un tour complet)
-                stop_cmd = Twist()  # Commande pour arrêter les mouvements
-                self.cmd_vel_pub.publish(stop_cmd)
+        rotate_cmd = Twist()
+        rotate_cmd.angular.z = 0.4  # Vitesse angulaire pour tourner à 360 degrés
+        self.cmd_vel_pub.publish(rotate_cmd)
 
-                best_centroid = self.find_best_centroid()
-                # delattr(self, 'rotation_start_time')
+        # Si le temps de début de rotation est défini, vérifiez si le tour est terminé
+        current_time = self.get_clock().now()
+        elapsed_time = (current_time - self.rotation_start_time).nanoseconds/1e9  # Temps écoulé en secondes
+        if elapsed_time >= 2 * math.pi/0.4:  # Si le temps écoulé est supérieur ou égal à 2 * pi (environ un tour complet)
+            stop_cmd = Twist()  # Commande pour arrêter les mouvements
+            self.cmd_vel_pub.publish(stop_cmd)
+
+            self.mapmanager_called = True
+            if self.mapmanager_called:
+                self.mapmanager_timer.cancel()
+            
+            if not self.working:
+                    
+                    self.get_logger().info(f"here")
+                    self.find_best_centroid()
+
+            self.movetobestcentroid()
+
+            """self.strategy_called = True
+            if self.strategy_called:
+                self.strategy_timer.cancel()"""
+
+
+    def turn(self):
+        # Publish velocity commands to turn towards the next cell
+        self.get_logger().info(f"turning")
+        twist_msg = Twist()
+        twist_msg.linear.x = 0.0
+        twist_msg.linear.y = 0.0
+        twist_msg.angular.z = 0.2 * self.angle_difference  # Adjust the angular velocity gain as needed
+        self.cmd_vel_pub.publish(twist_msg)
+    
+    def move_fwd(self):
+        # Stop turning and move forward
+        self.get_logger().info(f"moving fwd")
+        twist_msg = Twist()
+        twist_msg.angular.z = 0.0
+        twist_msg.linear.x = 0.3  # Adjust the linear velocity as needed
+        self.cmd_vel_pub.publish(twist_msg)
+
+    def stop_movement(self):
+        # Stop moving
+        self.get_logger().info(f"stopping")
+        twist_msg = Twist()
+        twist_msg.angular.z=0.0
+        twist_msg.linear.x = 0.0
+        self.cmd_vel_pub.publish(twist_msg)
+
 
 
 def main():
     rclpy.init()
 
     node = Agent()
+    node.strategy()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
